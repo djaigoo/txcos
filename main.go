@@ -40,7 +40,12 @@ func main() {
         files.InitIgnore()
         files.InitRecord()
         if len(os.Args) == 2 {
-            os.Args = append(os.Args, confs.GCos.DefaultPath)
+            path, err := utils.GetFileName(confs.GCos.DefaultPath)
+            if err != nil {
+                logkit.Errorf("invalid default path %s", err.Error())
+                return
+            }
+            os.Args = append(os.Args, path)
         }
         files.InitSieve(os.Args[2:]...)
         cos.Init()
@@ -105,11 +110,16 @@ func help() error {
 
 func check(paths ...string) (crt, mod, del []files.File, err error) {
     for _, p := range paths {
-        path, _ := filepath.Abs(p)
+        path, err := filepath.Abs(p)
+        if err != nil {
+            logkit.Errorf("invalid path %s", p)
+            continue
+        }
         sf := files.NewScanFile()
         err = sf.Walk(path)
         if err != nil {
-            return
+            logkit.Errorf("walk error %s", err.Error())
+            continue
         }
         files.Sort(sf.Files)
         tcrt, tmod, tdel := files.Check(sf.Files)
@@ -126,13 +136,13 @@ func status() error {
         return err
     }
     for _, file := range crt {
-        logkit.Infof("new file %s", file.FilePath())
+        logkit.Infof("new file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
     }
     for _, file := range mod {
-        logkit.Infof("modify file %s", file.FilePath())
+        logkit.Infof("modify file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
     }
     for _, file := range del {
-        logkit.Infof("delete file %s", file.FilePath())
+        logkit.Infof("delete file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
     }
     return nil
 }
@@ -156,60 +166,72 @@ func push() error {
     tdel := make([]files.File, 0, len(del))
     ctx := context.Background()
     bucket := utils.NewTokenBucket(100)
-    for _, file := range crt {
-        bucket.Get()
-        go func(file files.File) {
-            defer bucket.Put()
-            data, err := ioutil.ReadFile(file.FilePath())
-            if err != nil {
-                logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
-                return
-            }
-            name := getPushName(file)
-            err = cos.GClient.Put(ctx, name, bytes.NewBuffer(data))
-            if err != nil {
-                logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
-                return
-            }
-            tcrt = append(tcrt, file)
-            logkit.Infof("[push] new file %s --> %s succeed", file.FilePath(), name)
-        }(file)
-    }
+    bucket.Get()
+    go func() {
+        defer bucket.Put()
+        for _, file := range crt {
+            bucket.Get()
+            go func(file files.File) {
+                defer bucket.Put()
+                data, err := ioutil.ReadFile(file.FilePath())
+                if err != nil {
+                    logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
+                    return
+                }
+                name := getPushName(file)
+                err = cos.GClient.Put(ctx, name, bytes.NewBuffer(data))
+                if err != nil {
+                    logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
+                    return
+                }
+                tcrt = append(tcrt, file)
+                logkit.Infof("[push] new file %s --> %s succeed", file.FilePath(), name)
+            }(file)
+        }
+    }()
     
-    for _, file := range mod {
-        bucket.Get()
-        go func(file files.File) {
-            defer bucket.Put()
-            data, err := ioutil.ReadFile(file.FilePath())
-            if err != nil {
-                logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
-                return
-            }
-            name := getPushName(file)
-            err = cos.GClient.Put(ctx, name, bytes.NewBuffer(data))
-            if err != nil {
-                logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
-                return
-            }
-            tmod = append(tmod, file)
-            logkit.Infof("[push] modify %s --> %s succeed", file.FilePath(), name)
-        }(file)
-    }
+    bucket.Get()
+    go func() {
+        defer bucket.Put()
+        for _, file := range mod {
+            bucket.Get()
+            go func(file files.File) {
+                defer bucket.Put()
+                data, err := ioutil.ReadFile(file.FilePath())
+                if err != nil {
+                    logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
+                    return
+                }
+                name := getPushName(file)
+                err = cos.GClient.Put(ctx, name, bytes.NewBuffer(data))
+                if err != nil {
+                    logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
+                    return
+                }
+                tmod = append(tmod, file)
+                logkit.Infof("[push] modify %s --> %s succeed", file.FilePath(), name)
+            }(file)
+        }
+    }()
     
-    for _, file := range del {
-        bucket.Get()
-        go func(file files.File) {
-            defer bucket.Put()
-            name := getPushName(file)
-            err := cos.GClient.Delete(ctx, name)
-            if err != nil {
-                logkit.Errorf("[push] delete %s error %s", file.FilePath(), err.Error())
-                return
-            }
-            tdel = append(tdel, file)
-            logkit.Infof("[push] delete %s --> %s succeed", file.FilePath(), name)
-        }(file)
-    }
+    bucket.Get()
+    go func() {
+        defer bucket.Put()
+        for _, file := range del {
+            bucket.Get()
+            go func(file files.File) {
+                defer bucket.Put()
+                name := getPushName(file)
+                err := cos.GClient.Delete(ctx, name)
+                if err != nil {
+                    logkit.Errorf("[push] delete %s error %s", file.FilePath(), err.Error())
+                    return
+                }
+                tdel = append(tdel, file)
+                logkit.Infof("[push] delete %s --> %s succeed", file.FilePath(), name)
+            }(file)
+        }
+    }()
     
     bucket.Wait()
     files.Merge(&files.GFileList, tcrt, tmod, tdel)

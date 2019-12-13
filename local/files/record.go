@@ -78,11 +78,12 @@ func Merge(fs *[]File, crt, mod, del []File) {
         for ifs+idel < len(*fs) {
             if idel < len(del) && Compare((*fs)[ifs+idel], del[idel]) == 0 {
                 idel++
+                continue
             }
             (*fs)[ifs] = (*fs)[ifs+idel]
             ifs++
         }
-        (*reflect.SliceHeader)(unsafe.Pointer(&fs)).Len = ifs
+        (*reflect.SliceHeader)(unsafe.Pointer(fs)).Len = ifs
     }
     tn := time.Now()
     for _, f := range mod {

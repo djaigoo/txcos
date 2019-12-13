@@ -71,16 +71,12 @@ func InitConf() error {
         if len(kv[0]) == 0 || len(kv[1]) == 0 {
             continue
         }
-        if !filepath.IsAbs(kv[0]) {
-            kv[0], err = filepath.Abs(kv[0])
-            if err != nil {
-                logkit.Errorf("map_path specifies a local illegal path")
-                continue
-            }
+        kv[0], err = utils.GetFileName(kv[0])
+        if err != nil {
+            logkit.Errorf("map_path specifies a local illegal path")
+            continue
         }
-        if !filepath.IsAbs(kv[1]) {
-            kv[1] = filepath.Join(utils.RootPath(), kv[1])
-        }
+        kv[1], _ = utils.GetFileName(kv[1])
         pathMap[kv[0]] = kv[1]
     }
     return nil

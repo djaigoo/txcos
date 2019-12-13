@@ -43,6 +43,7 @@ func NewIgnore(path string) *Ignore {
             ret.Files = append(ret.Files, string(line))
         }
     }
+    ret.Dirs = append(ret.Dirs, utils.SYS_DIR+string(endMark))
     return ret
 }
 
