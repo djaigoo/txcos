@@ -1,4 +1,4 @@
-package files
+package local
 
 
 var SFileList []File

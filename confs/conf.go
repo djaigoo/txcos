@@ -46,6 +46,13 @@ func NewConf() (*Conf, error) {
     if err != nil {
         return nil, errors.Wrap(err, "toml unmarshal")
     }
+    if ret.SecretId == "" ||
+        ret.SecretKey == "" ||
+        ret.AppId == "" ||
+        ret.Bucket == "" ||
+        ret.Region == "" {
+        return nil, errors.Wrap(nil, "secret_id or secret_key or app_id or bucket or region not allow empty string")
+    }
     if ret.DefaultPath == "" {
         ret.DefaultPath = "."
     }

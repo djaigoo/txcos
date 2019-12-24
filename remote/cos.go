@@ -1,6 +1,6 @@
 // Package cos cos
 
-package cos
+package remote
 
 import (
     "context"

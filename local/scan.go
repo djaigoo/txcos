@@ -1,6 +1,6 @@
 // Package Files Files
 
-package files
+package local
 
 import (
     "github.com/djaigoo/logkit"

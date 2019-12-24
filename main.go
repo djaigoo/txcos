@@ -5,6 +5,8 @@ import (
     "bytes"
     "context"
     "fmt"
+    "github.com/djaigoo/txcos/local"
+    "github.com/djaigoo/txcos/remote"
     "github.com/pkg/errors"
     "io/ioutil"
     "os"
@@ -14,8 +16,6 @@ import (
     
     "github.com/djaigoo/logkit"
     "github.com/djaigoo/txcos/confs"
-    "github.com/djaigoo/txcos/local/files"
-    "github.com/djaigoo/txcos/remote/cos"
     "github.com/djaigoo/txcos/utils"
 )
 
@@ -37,8 +37,8 @@ func main() {
             logkit.Errorf("%s", err.Error())
             return
         }
-        files.InitIgnore()
-        files.InitRecord()
+        local.InitIgnore()
+        local.InitRecord()
         if len(os.Args) == 2 {
             path, err := utils.GetFileName(confs.GCos.DefaultPath)
             if err != nil {
@@ -47,8 +47,8 @@ func main() {
             }
             os.Args = append(os.Args, path)
         }
-        files.InitSieve(os.Args[2:]...)
-        cos.Init()
+        local.InitSieve(os.Args[2:]...)
+        remote.Init()
     }
     defer close()
     
@@ -64,11 +64,13 @@ func main() {
     logkit.Infof("exec success cost %s", time.Now().Sub(start).String())
 }
 
+// close 优雅的关闭
 func close() (err error) {
     // err = files.CloseIgnore()
     return
 }
 
+// initialize 初始化txcos系统
 func initialize() (err error) {
     utils.ROOT_PATH, err = filepath.Abs(".")
     if err != nil {
@@ -103,26 +105,27 @@ func initialize() (err error) {
     return nil
 }
 
+// help 打印帮助文档
 func help() error {
     fmt.Println(usage())
     return nil
 }
 
-func check(paths ...string) (crt, mod, del []files.File, err error) {
+func check(paths ...string) (crt, mod, del []local.File, err error) {
     for _, p := range paths {
         path, err := filepath.Abs(p)
         if err != nil {
             logkit.Errorf("invalid path %s", p)
             continue
         }
-        sf := files.NewScanFile()
+        sf := local.NewScanFile()
         err = sf.Walk(path)
         if err != nil {
             logkit.Errorf("walk error %s", err.Error())
             continue
         }
-        files.Sort(sf.Files)
-        tcrt, tmod, tdel := files.Check(sf.Files)
+        local.Sort(sf.Files)
+        tcrt, tmod, tdel := local.Check(sf.Files)
         crt = append(crt, tcrt...)
         mod = append(mod, tmod...)
         del = append(del, tdel...)
@@ -130,6 +133,7 @@ func check(paths ...string) (crt, mod, del []files.File, err error) {
     return
 }
 
+// status 查看文档更改状态
 func status() error {
     crt, mod, del, err := check(os.Args[2:]...)
     if err != nil {
@@ -147,12 +151,13 @@ func status() error {
     return nil
 }
 
-func getPushName(f files.File) string {
+func getPushName(f local.File) string {
     dir := confs.PathMap(f.Dir)
     path := strings.TrimPrefix(dir, utils.RootPath())
     return filepath.Join(path, f.Name)
 }
 
+// push 上传本地修改至cos
 func push() error {
     if len(os.Args) == 2 {
         os.Args = append(os.Args, ".")
@@ -161,9 +166,9 @@ func push() error {
     if err != nil {
         return err
     }
-    tcrt := make([]files.File, 0, len(crt))
-    tmod := make([]files.File, 0, len(mod))
-    tdel := make([]files.File, 0, len(del))
+    tcrt := make([]local.File, 0, len(crt))
+    tmod := make([]local.File, 0, len(mod))
+    tdel := make([]local.File, 0, len(del))
     ctx := context.Background()
     bucket := utils.NewTokenBucket(100)
     bucket.Get()
@@ -171,7 +176,7 @@ func push() error {
         defer bucket.Put()
         for _, file := range crt {
             bucket.Get()
-            go func(file files.File) {
+            go func(file local.File) {
                 defer bucket.Put()
                 data, err := ioutil.ReadFile(file.FilePath())
                 if err != nil {
@@ -179,7 +184,7 @@ func push() error {
                     return
                 }
                 name := getPushName(file)
-                err = cos.GClient.Put(ctx, name, bytes.NewBuffer(data))
+                err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
                 if err != nil {
                     logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
                     return
@@ -195,7 +200,7 @@ func push() error {
         defer bucket.Put()
         for _, file := range mod {
             bucket.Get()
-            go func(file files.File) {
+            go func(file local.File) {
                 defer bucket.Put()
                 data, err := ioutil.ReadFile(file.FilePath())
                 if err != nil {
@@ -203,7 +208,7 @@ func push() error {
                     return
                 }
                 name := getPushName(file)
-                err = cos.GClient.Put(ctx, name, bytes.NewBuffer(data))
+                err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
                 if err != nil {
                     logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
                     return
@@ -219,10 +224,10 @@ func push() error {
         defer bucket.Put()
         for _, file := range del {
             bucket.Get()
-            go func(file files.File) {
+            go func(file local.File) {
                 defer bucket.Put()
                 name := getPushName(file)
-                err := cos.GClient.Delete(ctx, name)
+                err := remote.GClient.Delete(ctx, name)
                 if err != nil {
                     logkit.Errorf("[push] delete %s error %s", file.FilePath(), err.Error())
                     return
@@ -234,6 +239,6 @@ func push() error {
     }()
     
     bucket.Wait()
-    files.Merge(&files.GFileList, tcrt, tmod, tdel)
-    return files.CloseRecord()
+    local.Merge(&local.GFileList, tcrt, tmod, tdel)
+    return local.CloseRecord()
 }

@@ -1,4 +1,4 @@
-package files
+package local
 
 import (
     "github.com/pkg/errors"
