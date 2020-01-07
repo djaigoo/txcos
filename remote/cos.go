@@ -35,6 +35,24 @@ func NewCos(c *confs.Conf) *cosImp {
     }
 }
 
+func (c *cosImp) Head(ctx context.Context, name string) (header http.Header, err error) {
+    rsp, err := c.cli.Object.Get(ctx, name, nil)
+    if err != nil {
+        return nil, err
+    }
+    rsp.Body.Close()
+    return rsp.Header, nil
+}
+
+func (c *cosImp) GetFileMD5(ctx context.Context, name string) (md5 string, err error) {
+    header, err := c.Head(ctx, name)
+    if err != nil {
+        return "", err
+    }
+    etag := header.Get("Etag")
+    return etag[1 : len(etag)-1], nil
+}
+
 // Get Get
 func (c *cosImp) Get(ctx context.Context, name string) (msg []byte, err error) {
     rsp, err := c.cli.Object.Get(ctx, name, nil)

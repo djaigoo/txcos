@@ -208,6 +208,17 @@ func push() error {
                     return
                 }
                 name := getPushName(file)
+                lmd5 := utils.GetMD5(data)
+                rmd5, err := remote.GClient.GetFileMD5(ctx, name)
+                if err != nil {
+                    logkit.Errorf("[push] cos get file md5 %s --> %s error %s", file.FilePath(), name, err.Error())
+                    return
+                }
+                if strings.Compare(lmd5, rmd5) == 0 {
+                    tmod = append(tmod, file)
+                    logkit.Alertf("[push] file %s --> %s no modification", file.FilePath(), name)
+                    return
+                }
                 err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
                 if err != nil {
                     logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
