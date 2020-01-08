@@ -112,7 +112,7 @@ func help() error {
     return nil
 }
 
-func check(paths ...string) (crt, mod, del []local.File, err error) {
+func check(paths ...string) (crt, mod, del []local.File) {
     for _, p := range paths {
         path, err := filepath.Abs(p)
         if err != nil {
@@ -136,10 +136,7 @@ func check(paths ...string) (crt, mod, del []local.File, err error) {
 
 // status 查看文档更改状态
 func status() error {
-    crt, mod, del, err := check(os.Args[2:]...)
-    if err != nil {
-        return err
-    }
+    crt, mod, del := check(os.Args[2:]...)
     for _, file := range crt {
         logkit.Infof("new file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
     }
@@ -152,7 +149,8 @@ func status() error {
     return nil
 }
 
-func getPushName(f local.File) string {
+// getRemoteName 获取远端文件名
+func getRemoteName(f local.File) string {
     dir := confs.PathMap(f.Dir)
     path := strings.TrimPrefix(dir, utils.RootPath())
     return filepath.Join(path, f.Name)
@@ -163,10 +161,7 @@ func push() error {
     if len(os.Args) == 2 {
         os.Args = append(os.Args, ".")
     }
-    crt, mod, del, err := check(os.Args[2:]...)
-    if err != nil {
-        return err
-    }
+    crt, mod, del:= check(os.Args[2:]...)
     tcrt := make([]local.File, 0, len(crt))
     tmod := make([]local.File, 0, len(mod))
     tdel := make([]local.File, 0, len(del))
@@ -184,7 +179,7 @@ func push() error {
                     logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
                     return
                 }
-                name := getPushName(file)
+                name := getRemoteName(file)
                 err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
                 if err != nil {
                     logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
@@ -208,14 +203,8 @@ func push() error {
                     logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
                     return
                 }
-                name := getPushName(file)
-                lmd5 := utils.GetMD5(data)
-                rmd5, err := remote.GClient.GetFileMD5(ctx, name)
-                if err != nil {
-                    logkit.Errorf("[push] cos get file md5 %s --> %s error %s", file.FilePath(), name, err.Error())
-                    return
-                }
-                if strings.Compare(lmd5, rmd5) == 0 {
+                name := getRemoteName(file)
+                if ok, _ := diffRemote(ctx, name, data); ok {
                     tmod = append(tmod, file)
                     logkit.Alertf("[push] file %s --> %s no modification", file.FilePath(), name)
                     return
@@ -238,7 +227,7 @@ func push() error {
             bucket.Get()
             go func(file local.File) {
                 defer bucket.Put()
-                name := getPushName(file)
+                name := getRemoteName(file)
                 err := remote.GClient.Delete(ctx, name)
                 if err != nil {
                     logkit.Errorf("[push] delete %s error %s", file.FilePath(), err.Error())
@@ -260,10 +249,7 @@ func pull() error {
     if len(os.Args) == 2 {
         os.Args = append(os.Args, ".")
     }
-    _, mod, _, err := check(os.Args[2:]...)
-    if err != nil {
-        return err
-    }
+    _, mod, _ := check(os.Args[2:]...)
     tmod := make([]local.File, 0, len(mod))
     ctx := context.Background()
     bucket := utils.NewTokenBucket(100)
@@ -279,14 +265,8 @@ func pull() error {
                     logkit.Errorf("[pull] read file %s error %s", file.FilePath(), err.Error())
                     return
                 }
-                name := getPushName(file)
-                lmd5 := utils.GetMD5(data)
-                rmd5, err := remote.GClient.GetFileMD5(ctx, name)
-                if err != nil {
-                    logkit.Errorf("[pull] cos get file md5 %s --> %s error %s", file.FilePath(), name, err.Error())
-                    return
-                }
-                if strings.Compare(lmd5, rmd5) == 0 {
+                name := getRemoteName(file)
+                if ok, _ := diffRemote(ctx, name, data); ok {
                     tmod = append(tmod, file)
                     logkit.Alertf("[pull] file %s --> %s no modification", file.FilePath(), name)
                     return
@@ -309,4 +289,16 @@ func pull() error {
     bucket.Wait()
     local.Merge(&local.GFileList, nil, tmod, nil)
     return local.CloseRecord()
+}
+
+func diffRemote(ctx context.Context, remoteName string, content []byte) (bool, error) {
+    lmd5 := utils.GetMD5(content)
+    rmd5, err := remote.GClient.GetFileMD5(ctx, remoteName)
+    if err != nil {
+        return false, errors.Wrap(err, "get file md5")
+    }
+    if strings.Compare(lmd5, rmd5) == 0 {
+        return true, nil
+    }
+    return false, nil
 }
