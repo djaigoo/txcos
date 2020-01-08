@@ -22,6 +22,7 @@ import (
 func init() {
     register("-i, init", "initialize related configuration items", initialize)
     register("-h, help", "show usage", help)
+    register("-l, pull", "pull remote file", pull)
     register("-p, push", "push add information", push)
     register("-s, status", "get status", status)
 }
@@ -251,5 +252,61 @@ func push() error {
     
     bucket.Wait()
     local.Merge(&local.GFileList, tcrt, tmod, tdel)
+    return local.CloseRecord()
+}
+
+// pull 拉取远端文件
+func pull() error {
+    if len(os.Args) == 2 {
+        os.Args = append(os.Args, ".")
+    }
+    _, mod, _, err := check(os.Args[2:]...)
+    if err != nil {
+        return err
+    }
+    tmod := make([]local.File, 0, len(mod))
+    ctx := context.Background()
+    bucket := utils.NewTokenBucket(100)
+    bucket.Get()
+    go func() {
+        defer bucket.Put()
+        for _, file := range mod {
+            bucket.Get()
+            go func(file local.File) {
+                defer bucket.Put()
+                data, err := ioutil.ReadFile(file.FilePath())
+                if err != nil {
+                    logkit.Errorf("[pull] read file %s error %s", file.FilePath(), err.Error())
+                    return
+                }
+                name := getPushName(file)
+                lmd5 := utils.GetMD5(data)
+                rmd5, err := remote.GClient.GetFileMD5(ctx, name)
+                if err != nil {
+                    logkit.Errorf("[pull] cos get file md5 %s --> %s error %s", file.FilePath(), name, err.Error())
+                    return
+                }
+                if strings.Compare(lmd5, rmd5) == 0 {
+                    tmod = append(tmod, file)
+                    logkit.Alertf("[pull] file %s --> %s no modification", file.FilePath(), name)
+                    return
+                }
+                msg, err := remote.GClient.Get(ctx, name)
+                if err != nil {
+                    logkit.Errorf("[pull] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
+                    return
+                }
+                err = ioutil.WriteFile(file.FilePath(), msg, 0644)
+                if err != nil {
+                    logkit.Errorf("[pull] write file %s --> %s error %s", file.FilePath(), name, err.Error())
+                    return
+                }
+                tmod = append(tmod, file)
+                logkit.Infof("[pull] modify %s --> %s succeed", file.FilePath(), name)
+            }(file)
+        }
+    }()
+    bucket.Wait()
+    local.Merge(&local.GFileList, nil, tmod, nil)
     return local.CloseRecord()
 }
