@@ -6,11 +6,13 @@ txcos 是一个快速上传本地文件至腾讯云对象存储中，它会扫�
 txcos usage:
   -h, help    show usage
   -i, init    initialize related configuration items
+  -l, pull    pull remote file
   -p, push    push add information
   -s, status  get status
 ```
 
 * -h，获取帮助文档
 * -i，初始化txcos目录
+* -l，拉取远端文件
 * -p，将有所修改的文件上传至腾讯云对象存储
 * -s，查看当前有所更改的文件列表
