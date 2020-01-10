@@ -5,9 +5,12 @@ package local
 import (
     "encoding/json"
     "io/ioutil"
+    "os"
     "path/filepath"
     "reflect"
     "sort"
+    "strings"
+    "syscall"
     "time"
     "unsafe"
     
@@ -20,14 +23,14 @@ type File struct {
     Name string `json:"name"`
     Dir  string `json:"dir"`
     // ModifyTime int64     `json:"modify_time"` // system stat time
-    UpdateTime time.Time `json:"update_time"` // cos update time
+    UpdateTime int64 `json:"update_time"` // cos update time
 }
 
 func (f File) FilePath() string {
     return filepath.Join(f.Dir, f.Name)
 }
 
-func NewFile(filename string, mtime int64) File {
+func NewFile(filename string) File {
     name := filepath.Base(filename)
     dir := filepath.Dir(filename)
     return File{
@@ -91,11 +94,11 @@ func Merge(fs *[]File, crt, mod, del []File) {
             logkit.Errorf("index error %s", f.FilePath())
             continue
         }
-        (*fs)[idx].UpdateTime = tn
+        (*fs)[idx].UpdateTime = tn.UnixNano()
     }
     
     for _, f := range crt {
-        f.UpdateTime = tn
+        f.UpdateTime = tn.UnixNano()
         *fs = append(*fs, f)
     }
     Sort(*fs)
@@ -107,18 +110,32 @@ func InitRecord() {
     GFileList = make([]File, 0)
     data, err := ioutil.ReadFile(utils.SysRecord())
     if err != nil {
-        panic("read record file error " + err.Error())
-        return
+        if pe, ok := err.(*os.PathError); ok && pe.Err == syscall.ENOENT {
+            // 文件不存在，直接返回
+            return
+        } else {
+            panic("read record file error " + err.Error())
+        }
     }
-    err = json.Unmarshal(data, &GFileList)
+    tlist := make([]File, 0)
+    err = json.Unmarshal(data, &tlist)
     if err != nil {
         panic("json unmarshal error " + err.Error())
         return
     }
+    for _, file := range tlist {
+        file.Dir = filepath.Join(utils.RootPath(), file.Dir)
+        GFileList = append(GFileList, file)
+    }
 }
 
 func CloseRecord() (err error) {
-    data, err := json.Marshal(GFileList)
+    tlist := make([]File, 0, len(GFileList))
+    for _, file := range GFileList {
+        file.Dir = strings.TrimPrefix(file.Dir, utils.RootPath())
+        tlist = append(tlist, file)
+    }
+    data, err := json.Marshal(tlist)
     if err != nil {
         return err
     }

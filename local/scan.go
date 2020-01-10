@@ -29,7 +29,7 @@ func (sf *ScanFile) Walk(path string) (err error) {
         return err
     }
     if !info.IsDir() {
-        s := NewFile(path, info.ModTime().UnixNano())
+        s := NewFile(path)
         sf.Files = append(sf.Files, s)
         return nil
     }
@@ -74,7 +74,7 @@ func (sf *ScanFile) walk(path string) (err error) {
                     if GIgnore.FindFile(name) {
                         continue
                     }
-                    s := NewFile(name, info.ModTime().UnixNano())
+                    s := NewFile(name)
                     sf.Files = append(sf.Files, s)
                 }
             }
@@ -108,7 +108,7 @@ func Check(last []File) (crt, mod, del []File) {
                 b++
                 continue
             }
-            if info.ModTime().Unix() > GFileList[a].UpdateTime.Unix() {
+            if info.ModTime().UnixNano() > GFileList[a].UpdateTime {
                 mod = append(mod, GFileList[a])
             }
             a++
