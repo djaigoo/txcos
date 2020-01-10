@@ -35,8 +35,9 @@ func NewCos(c *confs.Conf) *cosImp {
     }
 }
 
+// Head 请求远端文件信息
 func (c *cosImp) Head(ctx context.Context, name string) (header http.Header, err error) {
-    rsp, err := c.cli.Object.Get(ctx, name, nil)
+    rsp, err := c.cli.Object.Head(ctx, name, nil)
     if err != nil {
         return nil, err
     }
@@ -44,6 +45,7 @@ func (c *cosImp) Head(ctx context.Context, name string) (header http.Header, err
     return rsp.Header, nil
 }
 
+// GetFileMD5 获取远端文件MD5
 func (c *cosImp) GetFileMD5(ctx context.Context, name string) (md5 string, err error) {
     header, err := c.Head(ctx, name)
     if err != nil {
@@ -53,7 +55,7 @@ func (c *cosImp) GetFileMD5(ctx context.Context, name string) (md5 string, err e
     return etag[1 : len(etag)-1], nil
 }
 
-// Get Get
+// Get 获取远端文件内容
 func (c *cosImp) Get(ctx context.Context, name string) (msg []byte, err error) {
     rsp, err := c.cli.Object.Get(ctx, name, nil)
     if err != nil {
@@ -64,13 +66,13 @@ func (c *cosImp) Get(ctx context.Context, name string) (msg []byte, err error) {
     return msg, nil
 }
 
-// Put Put
+// Put 上传内容值远端
 func (c *cosImp) Put(ctx context.Context, name string, reader io.Reader) (err error) {
     _, err = c.cli.Object.Put(ctx, name, reader, nil)
     return err
 }
 
-// Delete Delete
+// Delete 删除远端文件
 func (c *cosImp) Delete(ctx context.Context, name string) (err error) {
     _, err = c.cli.Object.Delete(ctx, name)
     return err

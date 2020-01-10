@@ -5,6 +5,7 @@ import (
     "fmt"
 )
 
+// GetMD5 获取MD5
 func GetMD5(data []byte) string {
     gen := md5.New()
     gen.Write(data)

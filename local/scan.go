@@ -89,6 +89,7 @@ func (sf *ScanFile) walk(path string) (err error) {
 }
 
 // Check 查出新建文件，修改文件，删除文件，last必须是sort后的相对路径序列，返回路径为绝对路径
+// 会与上一次上传的列表进行对比，所以last必须传入的是本次修改的全部内容
 func Check(last []File) (crt, mod, del []File) {
     a, b := 0, 0
     crt = make([]File, 0)

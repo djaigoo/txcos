@@ -4,6 +4,7 @@ package utils
 
 import "sync"
 
+// TokenBucket 令牌桶，限流
 type TokenBucket struct {
     ch chan struct{}
     wg *sync.WaitGroup

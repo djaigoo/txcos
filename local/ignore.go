@@ -16,7 +16,7 @@ const (
     endLine = '\n'
 )
 
-// Ignore
+// Ignore 忽略上传文件/文件夹
 type Ignore struct {
     Files []string
     Dirs  []string

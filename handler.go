@@ -19,6 +19,7 @@ func init() {
     usageMap = make(map[string]string, 10)
 }
 
+// 注册命令行命令
 func register(cmd string, usage string, handle handler) {
     usageMap[cmd] = usage
     rcmd := ""
@@ -33,6 +34,7 @@ func register(cmd string, usage string, handle handler) {
     }
 }
 
+// do 执行
 func do(cmd string) error {
     handler, ok := handlerMap[cmd]
     if !ok {
@@ -41,6 +43,7 @@ func do(cmd string) error {
     return handler()
 }
 
+// usage 返回用法
 func usage() string {
     maxlen := 0
     keys := make([]string, 0, len(usageMap))

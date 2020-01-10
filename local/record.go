@@ -18,12 +18,11 @@ import (
     "github.com/djaigoo/txcos/utils"
 )
 
-// File
+// File 文件信息
 type File struct {
-    Name string `json:"name"`
-    Dir  string `json:"dir"`
-    // ModifyTime int64     `json:"modify_time"` // system stat time
-    UpdateTime int64 `json:"update_time"` // cos update time
+    Name       string `json:"name"`
+    Dir        string `json:"dir"`
+    UpdateTime int64  `json:"update_time"` // cos update time
 }
 
 func (f File) FilePath() string {
@@ -62,6 +61,24 @@ func Sort(filelist []File) {
         }
         return false
     })
+}
+
+// SortAndUniq 排序且去重
+func SortAndUniq(list []File) []File {
+    Sort(list)
+    l := len(list)
+    left, right := 0, 1
+    for i := 1; i < l; i++ {
+        if list[left].FilePath() == list[right].FilePath() {
+            right++
+        } else {
+            left++
+            list[left] = list[right]
+            right++
+        }
+    }
+    (*reflect.SliceHeader)(unsafe.Pointer(&list)).Len = left + 1
+    return list
 }
 
 func Index(fs []File, f File) (idx int) {

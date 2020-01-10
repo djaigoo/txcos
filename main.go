@@ -71,6 +71,20 @@ func close() (err error) {
     return
 }
 
+// pathUniq 去重传入路径参数
+// 返回值会打乱传入参数的顺序
+func pathUniq(paths []string) []string {
+    m := make(map[string]struct{})
+    for _, path := range paths {
+        m[path] = struct{}{}
+    }
+    ret := make([]string, 0, len(m))
+    for k := range m {
+        ret = append(ret, k)
+    }
+    return ret
+}
+
 // initialize 初始化txcos系统
 func initialize() (err error) {
     utils.ROOT_PATH, err = filepath.Abs(".")
@@ -114,6 +128,7 @@ func help() error {
 
 // check 获取指定目录下有变动的文件
 func check(paths ...string) (crt, mod, del []local.File) {
+    checkPath := make([]local.File, 0)
     for _, p := range paths {
         path, err := filepath.Abs(p)
         if err != nil {
@@ -126,18 +141,16 @@ func check(paths ...string) (crt, mod, del []local.File) {
             logkit.Errorf("walk error %s", err.Error())
             continue
         }
-        local.Sort(sf.Files)
-        tcrt, tmod, tdel := local.Check(sf.Files)
-        crt = append(crt, tcrt...)
-        mod = append(mod, tmod...)
-        del = append(del, tdel...)
+        checkPath = append(checkPath, sf.Files...)
     }
-    return
+    checkPath = local.SortAndUniq(checkPath)
+    return local.Check(checkPath)
 }
 
 // status 查看文档更改状态
 func status() error {
-    crt, mod, del := check(os.Args[2:]...)
+    paths := pathUniq(os.Args[2:])
+    crt, mod, del := check(paths...)
     for _, file := range crt {
         logkit.Infof("new file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
     }
@@ -162,7 +175,8 @@ func push() error {
     if len(os.Args) == 2 {
         os.Args = append(os.Args, ".")
     }
-    crt, mod, del := check(os.Args[2:]...)
+    paths := pathUniq(os.Args[2:])
+    crt, mod, del := check(paths...)
     tcrt := make([]local.File, 0, len(crt))
     tmod := make([]local.File, 0, len(mod))
     tdel := make([]local.File, 0, len(del))
@@ -255,7 +269,8 @@ func pull() error {
     if len(os.Args) == 2 {
         os.Args = append(os.Args, ".")
     }
-    _, mod, _ := check(os.Args[2:]...)
+    paths := pathUniq(os.Args[2:])
+    _, mod, _ := check(paths...)
     tmod := make([]local.File, 0, len(mod))
     ctx := context.Background()
     bucket := utils.NewTokenBucket(100)

@@ -35,6 +35,7 @@ func SysIgnore() string {
     return filepath.Join(ROOT_PATH, SYS_DIR, SYS_IGNORE)
 }
 
+// FindRoot 查找当前绝对路径中是否包含.cos文件夹
 func FindRoot() string {
     path := findRoot(".")
     return path

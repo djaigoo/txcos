@@ -89,6 +89,7 @@ func InitConf() error {
     return nil
 }
 
+// PathMap 获取本地路径对应的远端路径
 func PathMap(dir string) string {
     tdir := dir
     for {

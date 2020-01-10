@@ -6,6 +6,7 @@ import (
     "github.com/pkg/errors"
 )
 
+// GSieve 筛选路径，只操作里面包含的路径
 var GSieve []string
 
 func InitSieve(paths ...string) {
