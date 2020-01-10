@@ -5,9 +5,6 @@ import (
     "bytes"
     "context"
     "fmt"
-    "github.com/djaigoo/txcos/local"
-    "github.com/djaigoo/txcos/remote"
-    "github.com/pkg/errors"
     "io/ioutil"
     "os"
     "path/filepath"
@@ -16,7 +13,10 @@ import (
     
     "github.com/djaigoo/logkit"
     "github.com/djaigoo/txcos/confs"
+    "github.com/djaigoo/txcos/local"
+    "github.com/djaigoo/txcos/remote"
     "github.com/djaigoo/txcos/utils"
+    "github.com/pkg/errors"
 )
 
 func init() {
@@ -161,7 +161,7 @@ func push() error {
     if len(os.Args) == 2 {
         os.Args = append(os.Args, ".")
     }
-    crt, mod, del:= check(os.Args[2:]...)
+    crt, mod, del := check(os.Args[2:]...)
     tcrt := make([]local.File, 0, len(crt))
     tmod := make([]local.File, 0, len(mod))
     tdel := make([]local.File, 0, len(del))

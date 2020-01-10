@@ -17,9 +17,9 @@ import (
 
 // File
 type File struct {
-    Name       string    `json:"name"`
-    Dir        string    `json:"dir"`
-    ModifyTime time.Time `json:"modify_time"` // system stat time
+    Name string `json:"name"`
+    Dir  string `json:"dir"`
+    // ModifyTime int64     `json:"modify_time"` // system stat time
     UpdateTime time.Time `json:"update_time"` // cos update time
 }
 
@@ -27,13 +27,12 @@ func (f File) FilePath() string {
     return filepath.Join(f.Dir, f.Name)
 }
 
-func NewFile(filename string, mtime time.Time) File {
+func NewFile(filename string, mtime int64) File {
     name := filepath.Base(filename)
     dir := filepath.Dir(filename)
     return File{
-        Name:       name,
-        Dir:        dir,
-        ModifyTime: mtime,
+        Name: name,
+        Dir:  dir,
     }
 }
 

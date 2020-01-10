@@ -2,7 +2,7 @@
 
 package confs
 
-const(
+const (
     DefaultConf = `# 配置模板
 # cos相关配置
 secret_id=""
@@ -21,4 +21,3 @@ map_path="public:/,source:/private"
 default_path="."
 `
 )
-

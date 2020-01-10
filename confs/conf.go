@@ -3,12 +3,12 @@
 package confs
 
 import (
-    "github.com/djaigoo/logkit"
     "io/ioutil"
     "path/filepath"
     "strings"
     
     "github.com/BurntSushi/toml"
+    "github.com/djaigoo/logkit"
     "github.com/djaigoo/txcos/utils"
     "github.com/djaigoo/txcos/xerror"
     "github.com/pkg/errors"

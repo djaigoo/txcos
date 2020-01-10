@@ -1,8 +1,9 @@
 package local
 
 import (
-    "github.com/pkg/errors"
     "path/filepath"
+    
+    "github.com/pkg/errors"
 )
 
 var GSieve []string

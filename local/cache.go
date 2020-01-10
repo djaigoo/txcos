@@ -1,6 +1,5 @@
 package local
 
-
 var SFileList []File
 
 // Cache
