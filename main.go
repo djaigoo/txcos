@@ -32,6 +32,7 @@ func main() {
         fmt.Println(usage())
         return
     }
+    start := time.Now()
     if os.Args[1] != "init" {
         err := confs.InitConf()
         if err != nil {
@@ -53,7 +54,6 @@ func main() {
     }
     defer close()
     
-    start := time.Now()
     cmd := os.Args[1]
     err := do(cmd)
     if err != nil {
@@ -112,6 +112,7 @@ func help() error {
     return nil
 }
 
+// check 获取指定目录下有变动的文件
 func check(paths ...string) (crt, mod, del []local.File) {
     for _, p := range paths {
         path, err := filepath.Abs(p)
@@ -180,6 +181,11 @@ func push() error {
                     return
                 }
                 name := getRemoteName(file)
+                if ok, _ := diffRemote(ctx, name, data); ok {
+                    tcrt = append(tcrt, file)
+                    logkit.Alertf("[push] file %s --> %s no modification", file.FilePath(), name)
+                    return
+                }
                 err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
                 if err != nil {
                     logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
@@ -291,6 +297,7 @@ func pull() error {
     return local.CloseRecord()
 }
 
+// diffRemote 对比本地与远端文件内容是否相同
 func diffRemote(ctx context.Context, remoteName string, content []byte) (bool, error) {
     lmd5 := utils.GetMD5(content)
     rmd5, err := remote.GClient.GetFileMD5(ctx, remoteName)
