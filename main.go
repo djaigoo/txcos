@@ -170,6 +170,94 @@ func getRemoteName(f local.File) string {
     return filepath.Join(path, f.Name)
 }
 
+func bucketExec(ctx context.Context, files []local.File, f func(ctx context.Context, file local.File) error) (ret []local.File) {
+    bucket := utils.NewTokenBucket(100)
+    bucket.Get()
+    go func() {
+        defer bucket.Put()
+        for _, file := range files {
+            bucket.Get()
+            go func(file local.File) {
+                defer bucket.Put()
+                err := f(ctx, file)
+                if err != nil {
+                    logkit.Errorf(err.Error())
+                    return
+                }
+                // TODO 并发不安全
+                ret = append(ret, file)
+            }(file)
+        }
+    }()
+    bucket.Wait()
+    return ret
+}
+
+func putRemoteFile(ctx context.Context, file local.File) error {
+    data, err := ioutil.ReadFile(file.FilePath())
+    if err != nil {
+        return errors.Wrapf(err, "read file %s", file.FilePath())
+    }
+    name := getRemoteName(file)
+    if ok, _ := diffRemote(ctx, name, data); ok {
+        logkit.Alertf("[push] file %s --> %s no modification", file.FilePath(), name)
+        return nil
+    }
+    err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
+    if err != nil {
+        return errors.Wrapf(err, "[push] cos put %s --> %s", file.FilePath(), name)
+    }
+    return nil
+}
+
+func modRemoteFile(ctx context.Context, file local.File) error {
+    logkit.Debugf("%s", file.FilePath())
+    data, err := ioutil.ReadFile(file.FilePath())
+    if err != nil {
+        return errors.Wrapf(err, "read file %s", file.FilePath())
+    }
+    name := getRemoteName(file)
+    if ok, _ := diffRemote(ctx, name, data); ok {
+        logkit.Alertf("file %s --> %s no modification", file.FilePath(), name)
+        return nil
+    }
+    err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
+    if err != nil {
+        return errors.Wrapf(err, "cos put %s --> %s", file.FilePath(), name)
+    }
+    return nil
+}
+
+func delRemoteFile(ctx context.Context, file local.File) error {
+    name := getRemoteName(file)
+    err := remote.GClient.Delete(ctx, name)
+    if err != nil {
+        return errors.Wrapf(err, "[push] delete %s", file.FilePath())
+    }
+    return nil
+}
+
+func getRemoteFile(ctx context.Context, file local.File) error {
+    data, err := ioutil.ReadFile(file.FilePath())
+    if err != nil {
+        return errors.Wrapf(err, "read file %s", file.FilePath())
+    }
+    name := getRemoteName(file)
+    if ok, _ := diffRemote(ctx, name, data); ok {
+        logkit.Alertf("file %s --> %s no modification", file.FilePath(), name)
+        return nil
+    }
+    msg, err := remote.GClient.Get(ctx, name)
+    if err != nil {
+        return errors.Wrapf(err, "cos put %s --> %s", file.FilePath(), name)
+    }
+    err = ioutil.WriteFile(file.FilePath(), msg, 0644)
+    if err != nil {
+        return errors.Wrapf(err, "write file %s --> %s", file.FilePath(), name)
+    }
+    return nil
+}
+
 // push 上传本地修改至cos
 func push() error {
     if len(os.Args) == 2 {
@@ -177,89 +265,22 @@ func push() error {
     }
     paths := pathUniq(os.Args[2:])
     crt, mod, del := check(paths...)
-    tcrt := make([]local.File, 0, len(crt))
-    tmod := make([]local.File, 0, len(mod))
-    tdel := make([]local.File, 0, len(del))
     ctx := context.Background()
-    bucket := utils.NewTokenBucket(100)
-    bucket.Get()
-    go func() {
-        defer bucket.Put()
-        for _, file := range crt {
-            bucket.Get()
-            go func(file local.File) {
-                defer bucket.Put()
-                data, err := ioutil.ReadFile(file.FilePath())
-                if err != nil {
-                    logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
-                    return
-                }
-                name := getRemoteName(file)
-                if ok, _ := diffRemote(ctx, name, data); ok {
-                    tcrt = append(tcrt, file)
-                    logkit.Alertf("[push] file %s --> %s no modification", file.FilePath(), name)
-                    return
-                }
-                err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
-                if err != nil {
-                    logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
-                    return
-                }
-                tcrt = append(tcrt, file)
-                logkit.Infof("[push] new file %s --> %s succeed", file.FilePath(), name)
-            }(file)
-        }
-    }()
+    tcrt := bucketExec(ctx, crt, putRemoteFile)
+    tmod := bucketExec(ctx, mod, modRemoteFile)
+    tdel := bucketExec(ctx, del, delRemoteFile)
+    for _, file := range tcrt {
+        logkit.Infof("[push] new file %s --> %s succeed", file.FilePath(), getRemoteName(file))
+    }
     
-    bucket.Get()
-    go func() {
-        defer bucket.Put()
-        for _, file := range mod {
-            bucket.Get()
-            go func(file local.File) {
-                defer bucket.Put()
-                data, err := ioutil.ReadFile(file.FilePath())
-                if err != nil {
-                    logkit.Errorf("[push] read file %s error %s", file.FilePath(), err.Error())
-                    return
-                }
-                name := getRemoteName(file)
-                if ok, _ := diffRemote(ctx, name, data); ok {
-                    tmod = append(tmod, file)
-                    logkit.Alertf("[push] file %s --> %s no modification", file.FilePath(), name)
-                    return
-                }
-                err = remote.GClient.Put(ctx, name, bytes.NewBuffer(data))
-                if err != nil {
-                    logkit.Errorf("[push] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
-                    return
-                }
-                tmod = append(tmod, file)
-                logkit.Infof("[push] modify %s --> %s succeed", file.FilePath(), name)
-            }(file)
-        }
-    }()
+    for _, file := range tmod {
+        logkit.Infof("[push] mod file %s --> %s succeed", file.FilePath(), getRemoteName(file))
+    }
     
-    bucket.Get()
-    go func() {
-        defer bucket.Put()
-        for _, file := range del {
-            bucket.Get()
-            go func(file local.File) {
-                defer bucket.Put()
-                name := getRemoteName(file)
-                err := remote.GClient.Delete(ctx, name)
-                if err != nil {
-                    logkit.Errorf("[push] delete %s error %s", file.FilePath(), err.Error())
-                    return
-                }
-                tdel = append(tdel, file)
-                logkit.Infof("[push] delete %s --> %s succeed", file.FilePath(), name)
-            }(file)
-        }
-    }()
+    for _, file := range tdel {
+        logkit.Infof("[push] del file %s --> %s succeed", file.FilePath(), getRemoteName(file))
+    }
     
-    bucket.Wait()
     local.Merge(&local.GFileList, tcrt, tmod, tdel)
     return local.CloseRecord()
 }
@@ -271,43 +292,12 @@ func pull() error {
     }
     paths := pathUniq(os.Args[2:])
     _, mod, _ := check(paths...)
-    tmod := make([]local.File, 0, len(mod))
     ctx := context.Background()
-    bucket := utils.NewTokenBucket(100)
-    bucket.Get()
-    go func() {
-        defer bucket.Put()
-        for _, file := range mod {
-            bucket.Get()
-            go func(file local.File) {
-                defer bucket.Put()
-                data, err := ioutil.ReadFile(file.FilePath())
-                if err != nil {
-                    logkit.Errorf("[pull] read file %s error %s", file.FilePath(), err.Error())
-                    return
-                }
-                name := getRemoteName(file)
-                if ok, _ := diffRemote(ctx, name, data); ok {
-                    tmod = append(tmod, file)
-                    logkit.Alertf("[pull] file %s --> %s no modification", file.FilePath(), name)
-                    return
-                }
-                msg, err := remote.GClient.Get(ctx, name)
-                if err != nil {
-                    logkit.Errorf("[pull] cos put %s --> %s error %s", file.FilePath(), name, err.Error())
-                    return
-                }
-                err = ioutil.WriteFile(file.FilePath(), msg, 0644)
-                if err != nil {
-                    logkit.Errorf("[pull] write file %s --> %s error %s", file.FilePath(), name, err.Error())
-                    return
-                }
-                tmod = append(tmod, file)
-                logkit.Infof("[pull] modify %s --> %s succeed", file.FilePath(), name)
-            }(file)
-        }
-    }()
-    bucket.Wait()
+    tmod := bucketExec(ctx, mod, getRemoteFile)
+    for _, file := range tmod {
+        logkit.Infof("[pull] modify %s --> %s succeed", file.FilePath(), getRemoteName(file))
+    }
+    
     local.Merge(&local.GFileList, nil, tmod, nil)
     return local.CloseRecord()
 }
