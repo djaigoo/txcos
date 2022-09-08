@@ -6,7 +6,6 @@ import (
     "unicode"
     
     "github.com/djaigoo/txcos/xerror"
-    "github.com/pkg/errors"
 )
 
 type handler func() error
@@ -38,7 +37,7 @@ func register(cmd string, usage string, handle handler) {
 func do(cmd string) error {
     handler, ok := handlerMap[cmd]
     if !ok {
-        return errors.Wrapf(xerror.ErrCmdNotExist, "command %s", cmd)
+        return xerror.ErrCmdNotExist
     }
     return handler()
 }

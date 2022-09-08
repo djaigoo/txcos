@@ -8,7 +8,7 @@ import (
     "path/filepath"
     "strings"
     
-    "github.com/djaigoo/txcos/utils"
+    "github.com/djaigoo/txcos/confs"
 )
 
 const (
@@ -43,7 +43,7 @@ func NewIgnore(path string) *Ignore {
             ret.Files = append(ret.Files, string(line))
         }
     }
-    ret.Dirs = append(ret.Dirs, utils.SYS_DIR+string(endMark))
+    ret.Dirs = append(ret.Dirs, confs.SYS_DIR+string(endMark))
     return ret
 }
 
@@ -53,7 +53,7 @@ func (ig *Ignore) Close() error {
     content.WriteString(strings.Join(ig.Dirs, string(endLine)))
     content.Write([]byte{endLine})
     content.WriteString(strings.Join(ig.Files, string(endLine)))
-    return ioutil.WriteFile(utils.SysIgnore(), content.Bytes(), 0644)
+    return ioutil.WriteFile(confs.SysIgnore(), content.Bytes(), 0644)
 }
 
 // FindDir
@@ -95,7 +95,7 @@ func (ig *Ignore) FindFile(file string) bool {
 var GIgnore *Ignore
 
 func InitIgnore() {
-    GIgnore = NewIgnore(utils.SysIgnore())
+    GIgnore = NewIgnore(confs.SysIgnore())
 }
 
 func CloseIgnore() (err error) {

@@ -16,6 +16,7 @@ import (
     "github.com/djaigoo/txcos/local"
     "github.com/djaigoo/txcos/remote"
     "github.com/djaigoo/txcos/utils"
+    "github.com/djaigoo/txcos/xerror"
     "github.com/pkg/errors"
 )
 
@@ -25,6 +26,7 @@ func init() {
     register("-l, pull", "pull remote file", pull)
     register("-p, push", "push add information", push)
     register("-s, status", "get status", status)
+    register("-ci, cimage", "from clipboard get image", clipboardImage)
 }
 
 func main() {
@@ -33,21 +35,26 @@ func main() {
         return
     }
     start := time.Now()
-    if os.Args[1] != "init" {
-        err := confs.InitConf()
-        if err != nil {
-            logkit.Errorf("%s", err.Error())
-            return
+    showtime := false
+    defer func() {
+        if showtime {
+            logkit.Debugf("exec success cost %s", time.Now().Sub(start).String())
         }
+    }()
+    if os.Args[1] != "init" {
+        // 非初始化 预读配置
+        confs.InitYamlConf()
         local.InitIgnore()
         local.InitRecord()
         if len(os.Args) == 2 {
-            path, err := utils.GetFileName(confs.GCos.DefaultPath)
-            if err != nil {
-                logkit.Errorf("invalid default path %s", err.Error())
-                return
+            for _, p := range confs.YamlConf.Paths {
+                p, err := confs.GetFileName(p.Path)
+                if err != nil {
+                    logkit.Errorf("invalid default path %s", err.Error())
+                    return
+                }
+                os.Args = append(os.Args, p)
             }
-            os.Args = append(os.Args, path)
         }
         local.InitSieve(os.Args[2:]...)
         remote.Init()
@@ -56,13 +63,16 @@ func main() {
     
     cmd := os.Args[1]
     err := do(cmd)
-    if err != nil {
-        logkit.Errorf("exec error %s", err)
+    if err != nil && err == xerror.ErrCmdNotExist {
+        fmt.Println("not found command ", cmd)
         fmt.Println(usage())
         return
     }
-    
-    logkit.Infof("exec success cost %s", time.Now().Sub(start).String())
+    showtime = true
+    if err != nil {
+        logkit.Errorf("exec error %s", err)
+        return
+    }
 }
 
 // close 优雅的关闭
@@ -87,13 +97,10 @@ func pathUniq(paths []string) []string {
 
 // initialize 初始化txcos系统
 func initialize() (err error) {
-    utils.ROOT_PATH, err = filepath.Abs(".")
-    if err != nil {
-        return errors.Wrap(err, "get abs path")
-    }
-    _, err = os.Lstat(utils.SysDir())
+    confs.InitRootPath()
+    _, err = os.Lstat(confs.SysDir())
     if err == nil {
-        logkit.Infof("%s already exists in the current directory", utils.SYS_DIR)
+        logkit.Infof("%s already exists in the current directory", confs.SYS_DIR)
         return
     } else if e, ok := err.(*os.PathError); ok {
         if e.Err.Error() != "no such file or directory" {
@@ -101,19 +108,19 @@ func initialize() (err error) {
             return
         }
     }
-    err = os.Mkdir(utils.SysDir(), 0755)
+    err = os.Mkdir(confs.SysDir(), 0755)
     if err != nil {
         return errors.Wrap(err, "make dir")
     }
-    err = ioutil.WriteFile(utils.SysConf(), []byte(confs.DefaultConf), 0644)
+    err = ioutil.WriteFile(confs.SysYamlConf(), []byte(confs.DefaultConf), 0644)
     if err != nil {
         return errors.Wrap(err, "write sys conf")
     }
-    err = ioutil.WriteFile(utils.SysIgnore(), nil, 0644)
+    err = ioutil.WriteFile(confs.SysIgnore(), nil, 0644)
     if err != nil {
         return errors.Wrap(err, "write sys ignore")
     }
-    err = ioutil.WriteFile(utils.SysRecord(), []byte("[]"), 0644)
+    err = ioutil.WriteFile(confs.SysRecord(), []byte("[]"), 0644)
     if err != nil {
         return errors.Wrap(err, "write sys record")
     }
@@ -152,21 +159,22 @@ func status() error {
     paths := pathUniq(os.Args[2:])
     crt, mod, del := check(paths...)
     for _, file := range crt {
-        logkit.Infof("new file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
+        logkit.Infof("new file %s", strings.TrimPrefix(file.FilePath(), confs.RootPath()))
     }
     for _, file := range mod {
-        logkit.Infof("modify file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
+        logkit.Infof("modify file %s", strings.TrimPrefix(file.FilePath(), confs.RootPath()))
     }
     for _, file := range del {
-        logkit.Infof("delete file %s", strings.TrimPrefix(file.FilePath(), utils.RootPath()))
+        logkit.Infof("delete file %s", strings.TrimPrefix(file.FilePath(), confs.RootPath()))
     }
     return nil
 }
 
 // getRemoteName 获取远端文件名
 func getRemoteName(f local.File) string {
+    return confs.CosPathMap(f.FilePath())
     dir := confs.PathMap(f.Dir)
-    path := strings.TrimPrefix(dir, utils.RootPath())
+    path := strings.TrimPrefix(dir, confs.RootPath())
     return filepath.Join(path, f.Name)
 }
 
@@ -270,15 +278,15 @@ func push() error {
     tmod := bucketExec(ctx, mod, modRemoteFile)
     tdel := bucketExec(ctx, del, delRemoteFile)
     for _, file := range tcrt {
-        logkit.Infof("[push] new file %s --> %s succeed", file.FilePath(), getRemoteName(file))
+        logkit.Infof("[push] new file %s --> %s succeed", file.FilePath(), confs.CosPathAbs(getRemoteName(file)))
     }
     
     for _, file := range tmod {
-        logkit.Infof("[push] mod file %s --> %s succeed", file.FilePath(), getRemoteName(file))
+        logkit.Alertf("[push] mod file %s --> %s succeed", file.FilePath(), confs.CosPathAbs(getRemoteName(file)))
     }
     
     for _, file := range tdel {
-        logkit.Infof("[push] del file %s --> %s succeed", file.FilePath(), getRemoteName(file))
+        logkit.Warnf("[push] del file %s --> %s succeed", file.FilePath(), confs.CosPathAbs(getRemoteName(file)))
     }
     
     local.Merge(&local.GFileList, tcrt, tmod, tdel)
@@ -313,4 +321,20 @@ func diffRemote(ctx context.Context, remoteName string, content []byte) (bool, e
         return true, nil
     }
     return false, nil
+}
+
+// clipboardImage 将剪贴板图片上传
+func clipboardImage() error {
+    name, data, err := utils.GetClipboardImage()
+    if err != nil {
+        return err
+    }
+    err = remote.GClient.Put(context.Background(), confs.CosPathClipboard(name), bytes.NewBuffer(data))
+    if err != nil {
+        return err
+    }
+    name = confs.CosPathAbsClipboard(name)
+    fmt.Println(name)
+    utils.SetClipboardText([]byte(name))
+    return nil
 }

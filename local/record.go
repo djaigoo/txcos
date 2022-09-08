@@ -15,7 +15,7 @@ import (
     "unsafe"
     
     "github.com/djaigoo/logkit"
-    "github.com/djaigoo/txcos/utils"
+    "github.com/djaigoo/txcos/confs"
 )
 
 // File 文件信息
@@ -125,7 +125,7 @@ var GFileList []File
 
 func InitRecord() {
     GFileList = make([]File, 0)
-    data, err := ioutil.ReadFile(utils.SysRecord())
+    data, err := ioutil.ReadFile(confs.SysRecord())
     if err != nil {
         if pe, ok := err.(*os.PathError); ok && pe.Err == syscall.ENOENT {
             // 文件不存在，直接返回
@@ -141,7 +141,7 @@ func InitRecord() {
         return
     }
     for _, file := range tlist {
-        file.Dir = filepath.Join(utils.RootPath(), file.Dir)
+        file.Dir = filepath.Join(confs.RootPath(), file.Dir)
         GFileList = append(GFileList, file)
     }
 }
@@ -149,12 +149,12 @@ func InitRecord() {
 func CloseRecord() (err error) {
     tlist := make([]File, 0, len(GFileList))
     for _, file := range GFileList {
-        file.Dir = strings.TrimPrefix(file.Dir, utils.RootPath())
+        file.Dir = strings.TrimPrefix(file.Dir, confs.RootPath())
         tlist = append(tlist, file)
     }
     data, err := json.Marshal(tlist)
     if err != nil {
         return err
     }
-    return ioutil.WriteFile(utils.SysRecord(), data, 0644)
+    return ioutil.WriteFile(confs.SysRecord(), data, 0644)
 }

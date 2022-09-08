@@ -20,16 +20,32 @@ type cosImp struct {
 }
 
 // NewCos new cosImp
-func NewCos(c *confs.Conf) *cosImp {
-    link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", c.Bucket, c.AppId, c.Region)
+// func NewCos(c *confs.Conf) *cosImp {
+//     link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", c.Bucket, c.AppId, c.Region)
+//     u, _ := url.Parse(link)
+//     b := &cos.BaseURL{BucketURL: u}
+//     return &cosImp{
+//         cli: cos.NewClient(b, &http.Client{
+//             // Timeout: 5 * time.Second,
+//             Transport: &cos.AuthorizationTransport{
+//                 SecretID:  c.SecretId,
+//                 SecretKey: c.SecretKey,
+//             },
+//         }),
+//     }
+// }
+
+func NewCos() *cosImp {
+    link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", confs.YamlConf.Store.Bucket,
+        confs.YamlConf.Store.AppID, confs.YamlConf.Store.Region)
     u, _ := url.Parse(link)
     b := &cos.BaseURL{BucketURL: u}
     return &cosImp{
         cli: cos.NewClient(b, &http.Client{
             // Timeout: 5 * time.Second,
             Transport: &cos.AuthorizationTransport{
-                SecretID:  c.SecretId,
-                SecretKey: c.SecretKey,
+                SecretID:  confs.YamlConf.Store.SecretID,
+                SecretKey: confs.YamlConf.Store.SecretKey,
             },
         }),
     }
@@ -68,7 +84,16 @@ func (c *cosImp) Get(ctx context.Context, name string) (msg []byte, err error) {
 
 // Put 上传内容值远端
 func (c *cosImp) Put(ctx context.Context, name string, reader io.Reader) (err error) {
-    _, err = c.cli.Object.Put(ctx, name, reader, nil)
+    resp, err := c.cli.Object.Put(ctx, name, reader, nil)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+    data, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return err
+    }
+    fmt.Println(string(data))
     return err
 }
 
@@ -81,5 +106,5 @@ func (c *cosImp) Delete(ctx context.Context, name string) (err error) {
 var GClient *cosImp
 
 func Init() {
-    GClient = NewCos(confs.GCos)
+    GClient = NewCos()
 }

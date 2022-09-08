@@ -8,7 +8,7 @@ import (
     "sync"
     
     "github.com/djaigoo/logkit"
-    "github.com/djaigoo/txcos/utils"
+    "github.com/djaigoo/txcos/confs"
 )
 
 // ScanFile
@@ -45,7 +45,7 @@ func (sf *ScanFile) walk(path string) (err error) {
     wg.Add(1)
     go func() {
         for tmpPath := range ch {
-            names, err := utils.ReadDirNames(tmpPath)
+            names, err := confs.ReadDirNames(tmpPath)
             if err != nil {
                 logkit.Errorf("read dir %s names %s", tmpPath, err.Error())
                 break
