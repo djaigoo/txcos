@@ -156,7 +156,6 @@ func status() error {
     if len(ps) == 0 {
         return nil
     }
-    fmt.Println(ps)
     crt, mod, del := check(ps...)
     for _, file := range crt {
         logkit.Infof("create file %s", strings.TrimPrefix(file.FilePath(), confs.RootPath()))
@@ -265,10 +264,10 @@ func getRemoteFile(ctx context.Context, file local.File) error {
 
 // push 上传本地修改至cos
 func push() error {
-    if len(os.Args) == 2 {
-        os.Args = append(os.Args, ".")
+    paths := getOperDirs()
+    if len(paths) == 0 {
+        return nil
     }
-    paths := pathUniq(os.Args[2:])
     crt, mod, del := check(paths...)
     ctx := context.Background()
     tcrt := bucketExec(ctx, crt, putRemoteFile)
@@ -292,10 +291,10 @@ func push() error {
 
 // pull 拉取远端文件
 func pull() error {
-    if len(os.Args) == 2 {
-        os.Args = append(os.Args, ".")
+    paths := getOperDirs()
+    if len(paths) == 0 {
+        return nil
     }
-    paths := pathUniq(os.Args[2:])
     _, mod, _ := check(paths...)
     ctx := context.Background()
     tmod := bucketExec(ctx, mod, getRemoteFile)
