@@ -3,38 +3,51 @@ package local
 import (
     "path/filepath"
     
-    "github.com/pkg/errors"
+    "github.com/djaigoo/txcos/confs"
+    "github.com/djaigoo/txcos/xerror"
 )
 
-// GSieve 筛选路径，只操作里面包含的路径
-var GSieve []string
-
-func InitSieve(paths ...string) {
-    GSieve = make([]string, 0, 4)
-    err := AddSieve(paths...)
-    if err != nil {
-        panic(err.Error())
-    }
+// sieveImp 默认筛选路径，只操作里面包含的路径
+type sieveImp struct {
+    paths []string
 }
 
-func AddSieve(paths ...string) (err error) {
+func (si *sieveImp) Add(paths ...string) (err error) {
     for _, path := range paths {
         if !filepath.IsAbs(path) {
             path, err = filepath.Abs(path)
             if err != nil {
-                return errors.Wrap(err, "abs path")
+                return xerror.Wrap(err, "abs path")
             }
         }
-        GSieve = append(GSieve, path)
+        si.paths = append(si.paths, path)
     }
     return nil
 }
 
-func FindSieve(path string) bool {
-    for i := range GSieve {
-        if filepath.HasPrefix(path, GSieve[i]) {
+// Find
+func (si *sieveImp) Find(path string) bool {
+    for _, p := range si.paths {
+        if filepath.HasPrefix(path, p) {
             return true
         }
     }
     return false
+}
+
+// Paths
+func (si *sieveImp) Paths() []string {
+    return si.paths
+}
+
+var sieve *sieveImp
+
+func Sieve() *sieveImp {
+    if sieve == nil {
+        sieve = &sieveImp{}
+        for _, p := range confs.YamlConf().Paths {
+            sieve.Add(p.Path)
+        }
+    }
+    return sieve
 }

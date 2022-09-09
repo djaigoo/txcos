@@ -1,114 +1,24 @@
-// Package conf conf
+// Package confs
 
 package confs
 
 import (
+    _ "embed"
     "fmt"
     "io/ioutil"
     "path/filepath"
     "sort"
     "strings"
     
-    "github.com/BurntSushi/toml"
-    "github.com/djaigoo/logkit"
     "github.com/djaigoo/txcos/xerror"
     "github.com/pkg/errors"
     "gopkg.in/yaml.v3"
 )
 
-// Conf
-type Conf struct {
-    SecretId  string `toml:"secret_id,omitempty"`
-    SecretKey string `toml:"secret_key,omitempty"`
-    AppId     string `toml:"app_id,omitempty"`
-    Host      string `toml:"host,omitempty"`
-    Bucket    string `toml:"bucket,omitempty"`
-    Region    string `toml:"region,omitempty"`
-    
-    // 路由映射，格式"public:/,source:/source"，
-    // 前路径表示对于配置文件目录的父目录的相对路径，
-    // 后路径表示对于cos存储的路由路径，必须前缀'/'
-    MapPath string `toml:"map_path"`
-    
-    DefaultPath string `toml:"default_path"`
-}
+//go:embed default_conf.yaml
+var DefaultConf []byte
 
-// NewConf new Conf
-func NewConf() (*Conf, error) {
-    rootPath = RootPath()
-    if rootPath == "" {
-        return nil, xerror.ErrNotFoundRoot
-    }
-    cnt, err := ioutil.ReadFile(SysConf())
-    if err != nil {
-        panic(errors.Wrap(err, "read system conf file"))
-    }
-    ret := new(Conf)
-    err = toml.Unmarshal(cnt, ret)
-    if err != nil {
-        return nil, errors.Wrap(err, "toml unmarshal")
-    }
-    if ret.SecretId == "" ||
-        ret.SecretKey == "" ||
-        ret.AppId == "" ||
-        ret.Bucket == "" ||
-        ret.Region == "" {
-        return nil, errors.Wrap(nil, "secret_id or secret_key or app_id or bucket or region not allow empty string")
-    }
-    if ret.DefaultPath == "" {
-        ret.DefaultPath = "."
-    }
-    return ret, nil
-}
-
-var GCos *Conf
-var pathMap map[string]string
-
-func InitConf() error {
-    var err error
-    GCos, err = NewConf()
-    if err != nil {
-        return errors.Wrap(err, "new conf")
-    }
-    pathMap = make(map[string]string)
-    unit := strings.Split(GCos.MapPath, ",")
-    for _, u := range unit {
-        kv := strings.Split(u, ":")
-        if len(kv) != 2 {
-            continue
-        }
-        if len(kv[0]) == 0 || len(kv[1]) == 0 {
-            continue
-        }
-        kv[0], err = GetFileName(kv[0])
-        if err != nil {
-            logkit.Errorf("map_path specifies a local illegal path")
-            continue
-        }
-        kv[1], _ = GetFileName(kv[1])
-        pathMap[kv[0]] = kv[1]
-    }
-    return nil
-}
-
-// PathMap 获取本地路径对应的远端路径
-func PathMap(dir string) string {
-    tdir := dir
-    for {
-        p, ok := pathMap[tdir]
-        if ok {
-            p = filepath.Join(p, strings.TrimPrefix(dir, tdir))
-            return p
-        }
-        if tdir == RootPath() {
-            break
-        }
-        tdir = filepath.Dir(tdir)
-    }
-    return dir
-}
-
-var YamlConf *yamlConf
+var yamlConf *yamlConfig
 
 type store struct {
     Type      string `yaml:"type"`
@@ -129,49 +39,53 @@ type clipboard struct {
     Domain string `yaml:"domain"`
 }
 
-type yamlConf struct {
+type ignore struct {
+    Dirs  []string `yaml:"dirs"`
+    Files []string `yaml:"files"`
+}
+
+type yamlConfig struct {
     Store     store     `yaml:"store"`
     Paths     []path    `yaml:"paths"`
     Clipboard clipboard `yaml:"clipboard"`
+    Ignore    ignore    `yaml:"ignore"`
 }
 
-func CreateYamlConf() {
-    InitRootPath()
-}
-
-func InitYamlConf() {
-    if YamlConf != nil {
-        return
+func YamlConf() *yamlConfig {
+    if yamlConf != nil {
+        return yamlConf
     }
     rootPath = RootPath()
     if rootPath == "" {
         panic(xerror.ErrNotFoundRoot)
     }
-    YamlConf = &yamlConf{}
-    cnt, err := ioutil.ReadFile(SysYamlConf())
+    yamlConf = &yamlConfig{}
+    cnt, err := ioutil.ReadFile(SysConf())
     if err != nil {
         panic(errors.Wrap(err, "read system conf file"))
     }
-    err = yaml.Unmarshal(cnt, YamlConf)
+    err = yaml.Unmarshal(cnt, yamlConf)
     if err != nil {
         panic(errors.Wrap(err, "yaml unmarshal"))
     }
-    for i, tp := range YamlConf.Paths {
-        YamlConf.Paths[i].Path, err = filepath.Abs(filepath.Join(RootPath(), tp.Path))
+    for i, tp := range yamlConf.Paths {
+        // 绝对路径
+        yamlConf.Paths[i].Path, err = filepath.Abs(filepath.Join(RootPath(), tp.Path))
         if err != nil {
             panic("invalid path: " + tp.Path + " " + err.Error())
         }
     }
     // 长路径在前
-    sort.Slice(YamlConf.Paths, func(i, j int) bool {
-        return YamlConf.Paths[i].Path > YamlConf.Paths[j].Path
+    sort.Slice(yamlConf.Paths, func(i, j int) bool {
+        return yamlConf.Paths[i].Path > yamlConf.Paths[j].Path
     })
+    return yamlConf
 }
 
 // CosPathAbs 获取完整cos路径
 func CosPathAbs(p string) string {
-    return fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com%s", YamlConf.Store.Bucket,
-        YamlConf.Store.AppID, YamlConf.Store.Region, filepath.Join("/", p))
+    return fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com%s", yamlConf.Store.Bucket,
+        yamlConf.Store.AppID, yamlConf.Store.Region, filepath.Join("/", p))
 }
 
 // CosPathMap 传入本地路径 返回cos地址
@@ -180,7 +94,7 @@ func CosPathMap(p string) string {
     if err != nil {
         panic("invalid path: " + p + " " + err.Error())
     }
-    for _, tp := range YamlConf.Paths {
+    for _, tp := range yamlConf.Paths {
         if strings.HasPrefix(p, tp.Path) {
             return filepath.Join("/", tp.Redirect, strings.TrimPrefix(p, tp.Path))
         }
@@ -190,16 +104,16 @@ func CosPathMap(p string) string {
 
 // CosPathClipboard 获取剪贴板cos上传路径
 func CosPathClipboard(s string) string {
-    if YamlConf.Clipboard.Domain != "" {
-        return filepath.Join(YamlConf.Clipboard.Domain, YamlConf.Clipboard.Path, s)
+    if yamlConf.Clipboard.Domain != "" {
+        return filepath.Join(yamlConf.Clipboard.Domain, yamlConf.Clipboard.Path, s)
     }
-    return filepath.Join("/", YamlConf.Clipboard.Path, s)
+    return filepath.Join("/", yamlConf.Clipboard.Path, s)
 }
 
 // CosPathAbsClipboard 获取剪贴板cos上传完整url
 func CosPathAbsClipboard(s string) string {
-    if YamlConf.Clipboard.Domain != "" {
-        return filepath.Join(YamlConf.Clipboard.Domain, YamlConf.Clipboard.Path, s)
+    if yamlConf.Clipboard.Domain != "" {
+        return filepath.Join(yamlConf.Clipboard.Domain, yamlConf.Clipboard.Path, s)
     }
-    return CosPathAbs(filepath.Join("/", YamlConf.Clipboard.Path, s))
+    return CosPathAbs(filepath.Join("/", yamlConf.Clipboard.Path, s))
 }

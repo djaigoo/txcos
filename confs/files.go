@@ -9,11 +9,9 @@ import (
 )
 
 const (
-    SYS_DIR       = ".cos"
-    SYS_CONF      = "conf.toml"
-    SYS_YAML_CONF = "conf.yaml"
-    SYS_RECORD    = ".record"
-    SYS_IGNORE    = ".ignore"
+    SYS_DIR    = ".cos"
+    SYS_CONF   = "conf.yaml"
+    SYS_RECORD = ".record"
 )
 
 var (
@@ -21,23 +19,15 @@ var (
 )
 
 func SysDir() string {
-    return filepath.Join(rootPath, SYS_DIR)
+    return filepath.Join(RootPath(), SYS_DIR)
 }
 
 func SysConf() string {
-    return filepath.Join(rootPath, SYS_DIR, SYS_CONF)
-}
-
-func SysYamlConf() string {
-    return filepath.Join(rootPath, SYS_DIR, SYS_YAML_CONF)
+    return filepath.Join(RootPath(), SYS_DIR, SYS_CONF)
 }
 
 func SysRecord() string {
-    return filepath.Join(rootPath, SYS_DIR, SYS_RECORD)
-}
-
-func SysIgnore() string {
-    return filepath.Join(rootPath, SYS_DIR, SYS_IGNORE)
+    return filepath.Join(RootPath(), SYS_DIR, SYS_RECORD)
 }
 
 // InitRootPath 将当前路径设置为根路径
@@ -90,13 +80,4 @@ func ReadDirNames(dirname string) ([]string, error) {
     }
     sort.Strings(names)
     return names, nil
-}
-
-// GetFileName 以根目录为基础返回绝对路径
-func GetFileName(path string) (string, error) {
-    if !filepath.IsAbs(path) {
-        path = filepath.Join(RootPath(), path)
-    }
-    _, err := os.Lstat(path)
-    return path, err
 }

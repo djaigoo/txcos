@@ -19,33 +19,17 @@ type cosImp struct {
     cli *cos.Client
 }
 
-// NewCos new cosImp
-// func NewCos(c *confs.Conf) *cosImp {
-//     link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", c.Bucket, c.AppId, c.Region)
-//     u, _ := url.Parse(link)
-//     b := &cos.BaseURL{BucketURL: u}
-//     return &cosImp{
-//         cli: cos.NewClient(b, &http.Client{
-//             // Timeout: 5 * time.Second,
-//             Transport: &cos.AuthorizationTransport{
-//                 SecretID:  c.SecretId,
-//                 SecretKey: c.SecretKey,
-//             },
-//         }),
-//     }
-// }
-
 func NewCos() *cosImp {
-    link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", confs.YamlConf.Store.Bucket,
-        confs.YamlConf.Store.AppID, confs.YamlConf.Store.Region)
+    link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", confs.YamlConf().Store.Bucket,
+        confs.YamlConf().Store.AppID, confs.YamlConf().Store.Region)
     u, _ := url.Parse(link)
     b := &cos.BaseURL{BucketURL: u}
     return &cosImp{
         cli: cos.NewClient(b, &http.Client{
             // Timeout: 5 * time.Second,
             Transport: &cos.AuthorizationTransport{
-                SecretID:  confs.YamlConf.Store.SecretID,
-                SecretKey: confs.YamlConf.Store.SecretKey,
+                SecretID:  confs.YamlConf().Store.SecretID,
+                SecretKey: confs.YamlConf().Store.SecretKey,
             },
         }),
     }
@@ -103,8 +87,14 @@ func (c *cosImp) Delete(ctx context.Context, name string) (err error) {
     return err
 }
 
-var GClient *cosImp
+var cosClient *cosImp
 
-func Init() {
-    GClient = NewCos()
+func CosClient() *cosImp {
+    if cosClient != nil {
+        cosClient = NewCos()
+    }
+    if cosClient == nil {
+        panic("cos client nil")
+    }
+    return cosClient
 }

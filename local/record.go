@@ -63,24 +63,6 @@ func Sort(filelist []File) {
     })
 }
 
-// SortAndUniq 排序且去重
-func SortAndUniq(list []File) []File {
-    Sort(list)
-    l := len(list)
-    left, right := 0, 1
-    for i := 1; i < l; i++ {
-        if list[left].FilePath() == list[right].FilePath() {
-            right++
-        } else {
-            left++
-            list[left] = list[right]
-            right++
-        }
-    }
-    (*reflect.SliceHeader)(unsafe.Pointer(&list)).Len = left + 1
-    return list
-}
-
 func Index(fs []File, f File) (idx int) {
     for i := range fs {
         if Compare(fs[i], f) == 0 {
@@ -121,15 +103,17 @@ func Merge(fs *[]File, crt, mod, del []File) {
     Sort(*fs)
 }
 
-var GFileList []File
+type recordImp struct {
+    Files []File
+}
 
-func InitRecord() {
-    GFileList = make([]File, 0)
+func NewRecord() *recordImp {
+    ret := &recordImp{}
     data, err := ioutil.ReadFile(confs.SysRecord())
     if err != nil {
         if pe, ok := err.(*os.PathError); ok && pe.Err == syscall.ENOENT {
             // 文件不存在，直接返回
-            return
+            return ret
         } else {
             panic("read record file error " + err.Error())
         }
@@ -138,17 +122,18 @@ func InitRecord() {
     err = json.Unmarshal(data, &tlist)
     if err != nil {
         panic("json unmarshal error " + err.Error())
-        return
     }
     for _, file := range tlist {
         file.Dir = filepath.Join(confs.RootPath(), file.Dir)
-        GFileList = append(GFileList, file)
+        ret.Files = append(ret.Files, file)
     }
+    return ret
 }
 
-func CloseRecord() (err error) {
-    tlist := make([]File, 0, len(GFileList))
-    for _, file := range GFileList {
+// Close
+func (ri *recordImp) Close() (err error) {
+    tlist := make([]File, 0, len(ri.Files))
+    for _, file := range ri.Files {
         file.Dir = strings.TrimPrefix(file.Dir, confs.RootPath())
         tlist = append(tlist, file)
     }
@@ -157,4 +142,13 @@ func CloseRecord() (err error) {
         return err
     }
     return ioutil.WriteFile(confs.SysRecord(), data, 0644)
+}
+
+var record *recordImp
+
+func Record() *recordImp {
+    if record == nil {
+        record = NewRecord()
+    }
+    return record
 }

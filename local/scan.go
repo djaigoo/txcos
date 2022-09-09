@@ -5,6 +5,7 @@ package local
 import (
     "os"
     "path/filepath"
+    "strings"
     "sync"
     
     "github.com/djaigoo/logkit"
@@ -58,7 +59,7 @@ func (sf *ScanFile) walk(path string) (err error) {
                     continue
                 }
                 if info.IsDir() {
-                    if GIgnore.FindDir(name) {
+                    if Ignore().FindDir(name) {
                         continue
                     }
                     if len(ch) < clen>>1 {
@@ -71,7 +72,7 @@ func (sf *ScanFile) walk(path string) (err error) {
                         }(name)
                     }
                 } else {
-                    if GIgnore.FindFile(name) {
+                    if Ignore().FindFile(name) {
                         continue
                     }
                     s := NewFile(name)
@@ -90,18 +91,27 @@ func (sf *ScanFile) walk(path string) (err error) {
 
 // Check 查出新建文件，修改文件，删除文件，last必须是sort后的相对路径序列，返回路径为绝对路径
 // 会与上一次上传的列表进行对比，所以last必须传入的是本次修改的全部内容
-func Check(last []File) (crt, mod, del []File) {
+// area 表示扫描核对范围
+func Check(area []string, last []File) (crt, mod, del []File) {
     a, b := 0, 0
     crt = make([]File, 0)
     mod = make([]File, 0)
     del = make([]File, 0)
-    for a < len(GFileList) && b < len(last) {
-        if !FindSieve(GFileList[a].FilePath()) {
+    for a < len(Record().Files) && b < len(last) {
+        var e bool
+        for _, s := range area {
+            if strings.HasPrefix(Record().Files[a].Dir, s) {
+                e = true
+                break
+            }
+        }
+        if !e || !Sieve().Find(Record().Files[a].FilePath()) {
             a++
             continue
         }
-        if Compare(GFileList[a], last[b]) == 0 {
-            ap := GFileList[a]
+        switch Compare(Record().Files[a], last[b]) {
+        case 0:
+            ap := Record().Files[a]
             info, err := os.Lstat(ap.FilePath())
             if err != nil {
                 logkit.Errorf("os lstat %s, error:%s", ap, err)
@@ -109,25 +119,25 @@ func Check(last []File) (crt, mod, del []File) {
                 b++
                 continue
             }
-            if info.ModTime().UnixNano() > GFileList[a].UpdateTime {
-                mod = append(mod, GFileList[a])
+            if info.ModTime().UnixNano() > Record().Files[a].UpdateTime {
+                mod = append(mod, Record().Files[a])
             }
             a++
             b++
-        } else if Compare(GFileList[a], last[b]) > 0 {
+        case 1:
             crt = append(crt, last[b])
             b++
-        } else {
-            del = append(del, GFileList[a])
+        case -1:
+            del = append(del, Record().Files[a])
             a++
         }
     }
     
-    if a == len(GFileList) {
+    if a == len(Record().Files) {
         crt = append(crt, last[b:]...)
     } else {
-        for _, file := range GFileList[a:] {
-            if !FindSieve(file.FilePath()) {
+        for _, file := range Record().Files[a:] {
+            if !Sieve().Find(file.FilePath()) {
                 a++
                 continue
             }
