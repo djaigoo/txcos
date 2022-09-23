@@ -22,7 +22,10 @@ type cosImp struct {
 func NewCos() *cosImp {
     link := fmt.Sprintf("https://%s-%s.cos.%s.myqcloud.com", confs.YamlConf().Store.Bucket,
         confs.YamlConf().Store.AppID, confs.YamlConf().Store.Region)
-    u, _ := url.Parse(link)
+    u, err := url.Parse(link)
+    if err != nil {
+        panic(err.Error())
+    }
     b := &cos.BaseURL{BucketURL: u}
     return &cosImp{
         cli: cos.NewClient(b, &http.Client{
@@ -77,7 +80,9 @@ func (c *cosImp) Put(ctx context.Context, name string, reader io.Reader) (err er
     if err != nil {
         return err
     }
-    fmt.Println(string(data))
+    if len(data) != 0 {
+        fmt.Println(string(data))
+    }
     return err
 }
 
@@ -90,7 +95,7 @@ func (c *cosImp) Delete(ctx context.Context, name string) (err error) {
 var cosClient *cosImp
 
 func CosClient() *cosImp {
-    if cosClient != nil {
+    if cosClient == nil {
         cosClient = NewCos()
     }
     if cosClient == nil {
